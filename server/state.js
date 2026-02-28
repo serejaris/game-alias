@@ -1,8 +1,10 @@
 const rooms = new Map();
 
 function ensureHost(room) {
-  if (!room.players.some(p => p.id === room.hostId)) {
-    room.hostId = room.players[0]?.id ?? null;
+  const currentHost = room.players.find(p => p.id === room.hostId && !p.disconnected);
+  if (!currentHost) {
+    const onlinePlayer = room.players.find(p => !p.disconnected);
+    room.hostId = onlinePlayer?.id ?? null;
   }
 }
 

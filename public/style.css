@@ -328,6 +328,7 @@ input[type="text"]:focus {
 .team-2 .player-tag { border-left-color: var(--red); }
 
 .player-tag:active { transform: scale(0.97); }
+.player-tag.disconnected { opacity: 0.45; }
 
 @keyframes playerSlideIn {
   from { opacity: 0; transform: translateX(-16px); }

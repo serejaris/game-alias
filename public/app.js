@@ -144,6 +144,10 @@ function updatePlayerList(players, hostId) {
     tag.className = 'player-tag';
     const name = document.createElement('span');
     name.textContent = `${p.name}${p.id === state.myId ? ' (Вы)' : ''}`;
+    if (p.disconnected) {
+      tag.classList.add('disconnected');
+      name.textContent += ' (оффлайн)';
+    }
     tag.appendChild(name);
 
     if (p.id === hostId) {

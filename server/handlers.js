@@ -5,8 +5,10 @@ import { loadCategories, createWordPool } from './words.js';
 const roomTimers = new Map();   // code -> timerId (interval or timeout)
 const roomWordPools = new Map(); // code -> wordPool
 const playerRooms = new Map();   // socketId -> roomCode
+const disconnectTimers = new Map(); // playerName:roomCode -> { timerId, socketId }
 const ROUND_PAUSE_SECONDS = 5;
 const ROUND_PAUSE_MS = ROUND_PAUSE_SECONDS * 1000;
+const DISCONNECT_GRACE_MS = 30_000;
 
 export function registerHandlers(io, socket) {
   function emitLobbyState(code) {
@@ -44,8 +46,17 @@ export function registerHandlers(io, socket) {
     if (existingPlayer) {
       const oldId = existingPlayer.id;
       existingPlayer.id = socket.id;
+      existingPlayer.disconnected = false;
       playerRooms.set(socket.id, code);
       socket.join(code);
+
+      // Cancel pending disconnect removal
+      const key = `${playerName}:${code}`;
+      const pending = disconnectTimers.get(key);
+      if (pending) {
+        clearTimeout(pending.timerId);
+        disconnectTimers.delete(key);
+      }
 
       // Update host id if needed
       if (room.hostId === oldId) {
@@ -137,9 +148,32 @@ export function registerHandlers(io, socket) {
   socket.on('disconnect', () => {
     const code = playerRooms.get(socket.id);
     if (!code) return;
+    const room = getRoomByCode(code);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) {
+      playerRooms.delete(socket.id);
+      return;
+    }
+
+    const key = `${player.name}:${code}`;
+    player.disconnected = true;
     playerRooms.delete(socket.id);
-    removePlayer(code, socket.id);
     emitLobbyState(code);
+
+    const timerId = setTimeout(() => {
+      disconnectTimers.delete(key);
+      const currentRoom = getRoomByCode(code);
+      if (!currentRoom) return;
+      const p = currentRoom.players.find(pl => pl.name === player.name && pl.disconnected);
+      if (p) {
+        removePlayer(code, p.id);
+        emitLobbyState(code);
+      }
+    }, DISCONNECT_GRACE_MS);
+
+    disconnectTimers.set(key, { timerId, socketId: socket.id });
   });
 
   function sendWord(code, explainerId) {
