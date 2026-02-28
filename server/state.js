@@ -1,5 +1,11 @@
 const rooms = new Map();
 
+function ensureHost(room) {
+  if (!room.players.some(p => p.id === room.hostId)) {
+    room.hostId = room.players[0]?.id ?? null;
+  }
+}
+
 function generateCode() {
   let code;
   do {
@@ -50,11 +56,13 @@ export function addPlayer(code, { id, name }) {
     throw new Error('Room is full');
   }
   room.players.push({ id, name, team: null });
+  ensureHost(room);
 }
 
 export function removePlayer(code, playerId) {
   const room = rooms.get(code);
   room.players = room.players.filter(p => p.id !== playerId);
+  ensureHost(room);
 }
 
 export function setPlayerTeam(code, playerId, team) {

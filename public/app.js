@@ -98,20 +98,22 @@ socket.on('room-created', ({ code }) => {
   sessionStorage.setItem('alias-session', JSON.stringify({ roomCode: code, myName: state.myName }));
 });
 
-socket.on('player-joined', ({ players }) => {
+socket.on('player-joined', ({ players, hostId }) => {
+  state.isHost = hostId === state.myId;
+
   // If we just joined and weren't on lobby yet, switch to lobby
   if (!document.getElementById('lobby').classList.contains('active') &&
       document.getElementById('home').classList.contains('active')) {
     showScreen('lobby');
-    if (!state.isHost && state.roomCode) {
+    if (state.roomCode) {
       document.getElementById('room-code-display').textContent = state.roomCode;
     }
   }
 
-  updatePlayerList(players);
+  updatePlayerList(players, hostId);
 });
 
-function updatePlayerList(players) {
+function updatePlayerList(players, hostId) {
   const team1 = document.getElementById('team-1-players');
   const team2 = document.getElementById('team-2-players');
   const unassigned = document.getElementById('unassigned-list');
@@ -122,15 +124,26 @@ function updatePlayerList(players) {
   players.forEach(p => {
     const tag = document.createElement('div');
     tag.className = 'player-tag';
-    tag.innerHTML = `${p.name}${p.id === state.myId ? ' (Вы)' : ''}`;
+    const name = document.createElement('span');
+    name.textContent = `${p.name}${p.id === state.myId ? ' (Вы)' : ''}`;
+    tag.appendChild(name);
 
-    if (state.isHost && p.id !== state.myId) {
+    if (p.id === hostId) {
+      const hostBadge = document.createElement('span');
+      hostBadge.className = 'host-badge';
+      hostBadge.textContent = 'Хост';
+      tag.appendChild(hostBadge);
+    }
+
+    if (state.isHost) {
       // Host can click to cycle team: unassigned -> 1 -> 2 -> 1 ...
       tag.style.cursor = 'pointer';
       tag.onclick = () => {
         const nextTeam = !p.team ? 1 : p.team === 1 ? 2 : 1;
         socket.emit('switch-team', { playerId: p.id, team: nextTeam });
       };
+    } else {
+      tag.style.cursor = 'default';
     }
 
     if (p.team === 1) team1.appendChild(tag);
@@ -138,16 +151,20 @@ function updatePlayerList(players) {
     else unassigned.appendChild(tag);
   });
 
-  // Show/hide start button (host only, needs 2+2)
+  // Start button: host sees it always, enabled only for exact 2v2
   const startBtn = document.getElementById('btn-start');
+  const t1count = players.filter(p => p.team === 1).length;
+  const t2count = players.filter(p => p.team === 2).length;
+  const ready = players.length === 4 && t1count === 2 && t2count === 2;
+
   if (state.isHost) {
-    const t1count = players.filter(p => p.team === 1).length;
-    const t2count = players.filter(p => p.team === 2).length;
-    if (t1count >= 2 && t2count >= 2) {
-      startBtn.classList.remove('hidden');
-    } else {
-      startBtn.classList.add('hidden');
-    }
+    startBtn.classList.remove('hidden');
+    startBtn.disabled = !ready;
+    startBtn.textContent = ready ? 'Начать игру' : `Начать игру (${t1count}/2 vs ${t2count}/2)`;
+  } else {
+    startBtn.classList.add('hidden');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Начать игру';
   }
 }
 

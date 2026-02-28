@@ -117,5 +117,24 @@ describe('state', () => {
       const room = getRoomByCode(roomId);
       expect(room.players).toHaveLength(0);
     });
+
+    it('reassigns host to first remaining player when host leaves', () => {
+      addPlayer(roomId, { id: 'host-1', name: 'Host' });
+      addPlayer(roomId, { id: 'p2', name: 'Bob' });
+      addPlayer(roomId, { id: 'p3', name: 'Cara' });
+
+      removePlayer(roomId, 'host-1');
+      const room = getRoomByCode(roomId);
+
+      expect(room.hostId).toBe('p2');
+    });
+
+    it('clears host when room becomes empty', () => {
+      addPlayer(roomId, { id: 'host-1', name: 'Host' });
+      removePlayer(roomId, 'host-1');
+      const room = getRoomByCode(roomId);
+
+      expect(room.hostId).toBeNull();
+    });
   });
 });

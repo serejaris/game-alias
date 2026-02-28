@@ -7,6 +7,14 @@ const roomWordPools = new Map(); // code -> wordPool
 const playerRooms = new Map();   // socketId -> roomCode
 
 export function registerHandlers(io, socket) {
+  function emitLobbyState(code) {
+    const room = getRoomByCode(code);
+    if (!room) return;
+    io.to(code).emit('player-joined', {
+      players: room.players,
+      hostId: room.hostId
+    });
+  }
 
   socket.on('get-categories', (callback) => {
     callback(loadCategories());
@@ -48,8 +56,7 @@ export function registerHandlers(io, socket) {
         if (room.currentTurn.guesserId === oldId) room.currentTurn.guesserId = socket.id;
       }
 
-      const updated = getRoomByCode(code);
-      io.to(code).emit('player-joined', { players: updated.players });
+      emitLobbyState(code);
 
       // If game is in progress, resend game state
       if (room.phase === 'playing' && room.currentTurn) {
@@ -70,20 +77,15 @@ export function registerHandlers(io, socket) {
     }
     playerRooms.set(socket.id, code);
     socket.join(code);
-    const updated = getRoomByCode(code);
-    io.to(code).emit('player-joined', {
-      players: updated.players,
-    });
+    emitLobbyState(code);
   });
 
   socket.on('switch-team', ({ playerId, team }) => {
     const code = playerRooms.get(socket.id);
     const room = getRoomByCode(code);
-    if (room.hostId !== socket.id) return;
+    if (!room || room.hostId !== socket.id) return;
     setPlayerTeam(code, playerId, team);
-    io.to(code).emit('player-joined', {
-      players: getRoomByCode(code).players,
-    });
+    emitLobbyState(code);
   });
 
   socket.on('start-game', () => {
@@ -135,10 +137,7 @@ export function registerHandlers(io, socket) {
     if (!code) return;
     playerRooms.delete(socket.id);
     removePlayer(code, socket.id);
-    const room = getRoomByCode(code);
-    if (room) {
-      io.to(code).emit('player-joined', { players: room.players });
-    }
+    emitLobbyState(code);
   });
 
   function sendWord(code, explainerId) {
