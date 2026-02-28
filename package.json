@@ -5,15 +5,25 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "vite --config client/vite.config.js",
+    "build": "vite build --config client/vite.config.js",
+    "preview": "vite preview --config client/vite.config.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "express": "^4.21.0",
-    "socket.io": "^4.7.0"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "socket.io": "^4.7.0",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
+    "vite": "^5.4.21",
     "vitest": "^2.1.0"
   },
   "engines": {

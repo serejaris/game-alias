@@ -29,6 +29,7 @@ export function registerHandlers(io, socket) {
     const player = room.players.find(p => p.id === playerId);
     return {
       ...room.currentTurn,
+      roundTime: room.settings.roundTime,
       myRole: getRoleForPlayer(room.currentTurn, playerId),
       myTeam: player?.team ?? null,
       turnId: getTurnId(room)
@@ -219,6 +220,7 @@ export function registerHandlers(io, socket) {
   socket.on('start-game', () => {
     const code = playerRooms.get(socket.id);
     const room = getRoomByCode(code);
+    if (!room) return;
     if (room.hostId !== socket.id) return;
     if (!canStartGame(room)) return socket.emit('error', { message: 'Need 2+2 teams' });
 
