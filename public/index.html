@@ -1,2 +1,147 @@
 <!DOCTYPE html>
-<html><body><h1>Alias Game</h1></body></html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Alias</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- HOME SCREEN -->
+  <div id="home" class="screen active">
+    <div class="logo">ALIAS</div>
+    <p class="subtitle">Угадай слово!</p>
+    <button id="btn-create" class="btn btn-primary">Создать игру</button>
+    <button id="btn-join" class="btn btn-secondary">Войти по коду</button>
+    <!-- Join form (hidden by default) -->
+    <div id="join-form" class="hidden">
+      <input id="input-code" type="text" maxlength="4" placeholder="Код комнаты" inputmode="numeric">
+      <input id="input-name-join" type="text" maxlength="20" placeholder="Ваше имя">
+      <button id="btn-join-submit" class="btn btn-primary">Войти</button>
+    </div>
+  </div>
+
+  <!-- CREATE ROOM SCREEN -->
+  <div id="create" class="screen">
+    <h2>Новая игра</h2>
+    <div class="form-group">
+      <label>Категории</label>
+      <div id="categories-list" class="categories"></div>
+    </div>
+    <div class="form-group">
+      <label>Очков для победы</label>
+      <div class="radio-group" id="target-score-group">
+        <button class="radio-btn" data-value="30">30</button>
+        <button class="radio-btn selected" data-value="50">50</button>
+        <button class="radio-btn" data-value="70">70</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Время раунда</label>
+      <div class="radio-group" id="round-time-group">
+        <button class="radio-btn" data-value="30">30с</button>
+        <button class="radio-btn" data-value="45">45с</button>
+        <button class="radio-btn selected" data-value="60">60с</button>
+      </div>
+    </div>
+    <input id="input-name-create" type="text" maxlength="20" placeholder="Ваше имя">
+    <button id="btn-create-room" class="btn btn-primary">Создать</button>
+  </div>
+
+  <!-- LOBBY SCREEN -->
+  <div id="lobby" class="screen">
+    <div class="room-code">Код: <span id="room-code-display"></span></div>
+    <div class="teams-container">
+      <div class="team team-1">
+        <h3>Команда 1</h3>
+        <div id="team-1-players" class="player-list"></div>
+      </div>
+      <div class="team team-2">
+        <h3>Команда 2</h3>
+        <div id="team-2-players" class="player-list"></div>
+      </div>
+    </div>
+    <div id="unassigned-players" class="unassigned">
+      <h4>Без команды</h4>
+      <div id="unassigned-list" class="player-list"></div>
+    </div>
+    <button id="btn-start" class="btn btn-primary hidden">Начать игру</button>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game" class="screen">
+    <div class="game-header">
+      <div class="scores">
+        <span class="score team-1-score">0</span>
+        <span class="score-divider">:</span>
+        <span class="score team-2-score">0</span>
+      </div>
+      <div class="timer-container">
+        <svg class="timer-ring" viewBox="0 0 100 100">
+          <circle class="timer-bg" cx="50" cy="50" r="45" />
+          <circle class="timer-progress" cx="50" cy="50" r="45" />
+        </svg>
+        <span id="timer-text" class="timer-text">60</span>
+      </div>
+    </div>
+
+    <!-- Explainer view -->
+    <div id="explainer-view" class="game-role hidden">
+      <div class="role-label">Вы объясняете</div>
+      <div id="current-word" class="word-display"></div>
+    </div>
+
+    <!-- Guesser view -->
+    <div id="guesser-view" class="game-role hidden">
+      <div class="role-label">Вы угадываете</div>
+      <div class="guesser-buttons">
+        <button id="btn-guess" class="btn-game btn-guess">✓ Угадал!</button>
+        <button id="btn-skip" class="btn-game btn-skip">→ Пропуск</button>
+      </div>
+    </div>
+
+    <!-- Observer view -->
+    <div id="observer-view" class="game-role hidden">
+      <div class="role-label">Ход команды <span id="playing-team"></span></div>
+      <div class="waiting-message">Ждём ход...</div>
+    </div>
+
+    <!-- Word result flash -->
+    <div id="word-result" class="word-result hidden"></div>
+
+    <!-- Turn end overlay -->
+    <div id="turn-overlay" class="overlay hidden">
+      <div class="overlay-content">
+        <h2>Конец раунда</h2>
+        <div class="overlay-scores">
+          <span class="team-1-score">0</span> : <span class="team-2-score">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS SCREEN -->
+  <div id="results" class="screen">
+    <div class="winner-banner">
+      <h1 id="winner-text"></h1>
+    </div>
+    <div class="final-scores">
+      <div class="final-team team-1">
+        <h3>Команда 1</h3>
+        <span id="final-score-1" class="final-score">0</span>
+      </div>
+      <div class="final-team team-2">
+        <h3>Команда 2</h3>
+        <span id="final-score-2" class="final-score">0</span>
+      </div>
+    </div>
+    <button id="btn-play-again" class="btn btn-primary">Играть снова</button>
+  </div>
+
+  <!-- Error toast -->
+  <div id="error-toast" class="toast hidden"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
