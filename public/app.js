@@ -166,6 +166,21 @@ function updatePlayerList(players, hostId) {
     startBtn.disabled = true;
     startBtn.textContent = 'Начать игру';
   }
+
+  // Lobby status
+  const statusEl = document.getElementById('lobby-status');
+  if (statusEl) {
+    const total = players.length;
+    if (total < 4) {
+      statusEl.textContent = `Ожидание игроков (${total}/4)`;
+    } else {
+      if (t1count === 2 && t2count === 2) {
+        statusEl.textContent = 'Все готовы!';
+      } else {
+        statusEl.textContent = 'Распределите по командам 2+2';
+      }
+    }
+  }
 }
 
 // Start game (host)
@@ -217,7 +232,20 @@ socket.on('tick', ({ secondsLeft }) => {
 
   const circumference = 283;
   const progress = (secondsLeft / state.roundTime) * circumference;
-  document.querySelector('.timer-progress').style.strokeDashoffset = circumference - progress;
+  const timerProgress = document.querySelector('.timer-progress');
+  const timerContainer = document.querySelector('.timer-container');
+  timerProgress.style.strokeDashoffset = circumference - progress;
+
+  timerProgress.classList.remove('warning', 'danger');
+  timerContainer.classList.remove('pulse');
+
+  if (secondsLeft <= 5) {
+    timerProgress.classList.add('danger');
+    timerContainer.classList.add('pulse');
+    navigator.vibrate?.(30);
+  } else if (secondsLeft <= 15) {
+    timerProgress.classList.add('warning');
+  }
 });
 
 // Turn end
@@ -259,13 +287,39 @@ document.getElementById('btn-play-again').onclick = () => {
 };
 
 // ========== GAME ACTIONS ==========
-document.getElementById('btn-guess').onclick = () => socket.emit('guess');
-document.getElementById('btn-skip').onclick = () => socket.emit('skip');
+document.getElementById('btn-guess').onclick = () => {
+  socket.emit('guess');
+  navigator.vibrate?.(50);
+};
+document.getElementById('btn-skip').onclick = () => {
+  socket.emit('skip');
+  navigator.vibrate?.(30);
+};
+
+// ========== COPY ROOM CODE ==========
+document.getElementById('btn-copy-code')?.addEventListener('click', () => {
+  const code = document.getElementById('room-code-display').textContent;
+  navigator.clipboard?.writeText(code).then(() => showToast('Код скопирован!'));
+});
 
 // ========== HELPERS ==========
 function updateScores(scores) {
-  document.querySelectorAll('.team-1-score').forEach(el => el.textContent = scores[1]);
-  document.querySelectorAll('.team-2-score').forEach(el => el.textContent = scores[2]);
+  document.querySelectorAll('.team-1-score').forEach(el => {
+    if (el.textContent !== String(scores[1])) {
+      el.textContent = scores[1];
+      el.classList.remove('score-bump');
+      void el.offsetWidth;
+      el.classList.add('score-bump');
+    }
+  });
+  document.querySelectorAll('.team-2-score').forEach(el => {
+    if (el.textContent !== String(scores[2])) {
+      el.textContent = scores[2];
+      el.classList.remove('score-bump');
+      void el.offsetWidth;
+      el.classList.add('score-bump');
+    }
+  });
 }
 
 function showToast(message) {
