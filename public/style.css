@@ -737,6 +737,49 @@ input[type="text"]:focus {
   50% { transform: scale(1.16); opacity: 0.75; }
 }
 
+.steal-overlay-content {
+  min-width: min(360px, 88vw);
+}
+
+.steal-text {
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 1rem;
+}
+
+.steal-countdown {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+#steal-seconds {
+  display: inline-block;
+  min-width: 1ch;
+  font-size: 1.25rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-steal-word {
+  margin-top: 12px;
+}
+
+body.reduced-motion .swipe-card {
+  transition: none !important;
+  animation: none !important;
+}
+
+body.reduced-motion .word-result,
+body.reduced-motion #pause-seconds,
+body.reduced-motion #steal-seconds,
+body.reduced-motion .timer-container {
+  animation: none !important;
+}
+
 /* ========== RESULTS ========== */
 .winner-banner {
   margin-top: 12vh;
