@@ -10,6 +10,7 @@
     "dev:client": "vite --config client/vite.config.js",
     "build": "vite build --config client/vite.config.js",
     "preview": "vite preview --config client/vite.config.js",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -21,8 +22,11 @@
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
     "vite": "^5.4.21",
     "vitest": "^2.1.0"
   },
