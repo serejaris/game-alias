@@ -101,9 +101,25 @@
     <!-- Guesser view -->
     <div id="guesser-view" class="game-role hidden">
       <div class="role-label">Вы угадываете</div>
+
+      <!-- Swipe area -->
+      <div id="swipe-area" class="swipe-area">
+        <div id="swipe-hint-left" class="swipe-hint swipe-hint-left">Пропуск</div>
+        <div id="swipe-hint-right" class="swipe-hint swipe-hint-right">Угадал!</div>
+        <div id="swipe-card" class="swipe-card">
+          <div class="swipe-card-icon">👂</div>
+          <div class="swipe-card-text">Слушайте объяснение</div>
+          <div class="swipe-card-hint">
+            <span class="hint-left">← Пропуск</span>
+            <span class="hint-right">Угадал! →</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fallback кнопки -->
       <div class="guesser-buttons">
-        <button id="btn-guess" class="btn-game btn-guess">✓ Угадал!</button>
-        <button id="btn-skip" class="btn-game btn-skip">→ Пропуск</button>
+        <button id="btn-guess" class="btn-game btn-guess">✓</button>
+        <button id="btn-skip" class="btn-game btn-skip">✗</button>
       </div>
     </div>
 
@@ -122,6 +138,9 @@
         <h2>Конец раунда</h2>
         <div class="overlay-scores">
           <span class="team-1-score">0</span> : <span class="team-2-score">0</span>
+        </div>
+        <div id="pause-countdown" class="pause-countdown">
+          Следующий раунд через <span id="pause-seconds">5</span>
         </div>
       </div>
     </div>

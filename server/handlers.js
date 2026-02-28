@@ -2,9 +2,11 @@ import { createRoom, getRoomByCode, addPlayer, removePlayer, setPlayerTeam, star
 import { canStartGame, processGuess, processSkip, checkWin } from './rules.js';
 import { loadCategories, createWordPool } from './words.js';
 
-const roomTimers = new Map();   // code -> intervalId
+const roomTimers = new Map();   // code -> timerId (interval or timeout)
 const roomWordPools = new Map(); // code -> wordPool
 const playerRooms = new Map();   // socketId -> roomCode
+const ROUND_PAUSE_SECONDS = 5;
+const ROUND_PAUSE_MS = ROUND_PAUSE_SECONDS * 1000;
 
 export function registerHandlers(io, socket) {
   function emitLobbyState(code) {
@@ -148,29 +150,38 @@ export function registerHandlers(io, socket) {
 
   function startTimer(io, code) {
     const room = getRoomByCode(code);
+    if (!room || room.phase !== 'playing') return;
     let seconds = room.settings.roundTime;
     const interval = setInterval(() => {
       seconds--;
       io.to(code).emit('tick', { secondsLeft: seconds });
       if (seconds <= 0) {
         clearInterval(interval);
-        roomTimers.delete(code);
         const current = getRoomByCode(code);
+        if (!current || current.phase !== 'playing') return;
         io.to(code).emit('turn-end', {
-          scores: current.scores
+          scores: current.scores,
+          pauseDuration: ROUND_PAUSE_SECONDS
         });
-        const turnInfo = nextTurn(code);
-        io.to(code).emit('game-started', turnInfo);
-        sendWord(code, turnInfo.explainerId);
-        startTimer(io, code);
+
+        const pauseTimer = setTimeout(() => {
+          const activeRoom = getRoomByCode(code);
+          if (!activeRoom || activeRoom.phase !== 'playing') return;
+          const turnInfo = nextTurn(code);
+          io.to(code).emit('game-started', turnInfo);
+          sendWord(code, turnInfo.explainerId);
+          startTimer(io, code);
+        }, ROUND_PAUSE_MS);
+
+        roomTimers.set(code, pauseTimer);
       }
     }, 1000);
     roomTimers.set(code, interval);
   }
 
   function endGame(io, code, winner) {
-    const interval = roomTimers.get(code);
-    if (interval) clearInterval(interval);
+    const timer = roomTimers.get(code);
+    if (timer) clearTimeout(timer);
     roomTimers.delete(code);
     const room = getRoomByCode(code);
     room.phase = 'finished';

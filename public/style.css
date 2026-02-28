@@ -467,13 +467,124 @@ input[type="text"]:focus {
   line-height: 1.2;
 }
 
-.guesser-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.swipe-area {
+  position: relative;
   width: 100%;
   flex: 1;
-  padding-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.swipe-card {
+  width: 85%;
+  max-width: 340px;
+  aspect-ratio: 3 / 4;
+  background: var(--surface);
+  border-radius: 24px;
+  border: 3px solid transparent;
+  box-shadow: 0 20px 45px rgba(28, 25, 23, 0.16);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 18px;
+  transform: translateX(0) rotate(0deg);
+  will-change: transform, opacity;
+}
+
+.swipe-card-icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.swipe-card-text {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.swipe-card-hint {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.swipe-hint {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: white;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s linear;
+}
+
+.swipe-hint-left {
+  left: 12px;
+  background: rgba(220, 38, 38, 0.9);
+}
+
+.swipe-hint-right {
+  right: 12px;
+  background: rgba(22, 163, 74, 0.9);
+}
+
+.swipe-card.swiping-left {
+  border-color: var(--red);
+}
+
+.swipe-card.swiping-right {
+  border-color: var(--green);
+}
+
+.swipe-card.exit-left {
+  transition: transform 300ms ease, opacity 300ms ease;
+  transform: translateX(-130vw) rotate(-30deg);
+  opacity: 0;
+}
+
+.swipe-card.exit-right {
+  transition: transform 300ms ease, opacity 300ms ease;
+  transform: translateX(130vw) rotate(30deg);
+  opacity: 0;
+}
+
+.swipe-card.entering {
+  animation: swipeEnter 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes swipeEnter {
+  0% { opacity: 0; transform: translateY(32px) scale(0.92); }
+  70% { opacity: 1; transform: translateY(-6px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.guesser-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  width: 100%;
+  flex: 0;
+  padding: 8px 0 16px;
 }
 
 .btn-game {
@@ -481,10 +592,10 @@ input[type="text"]:focus {
   border: none;
   border-radius: var(--radius);
   font-family: var(--font-display);
-  font-size: 1.6rem;
+  font-size: 1.1rem;
   font-weight: 900;
   cursor: pointer;
-  min-height: 80px;
+  min-height: 52px;
   transition: transform 0.1s, box-shadow 0.1s;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -600,6 +711,29 @@ input[type="text"]:focus {
   font-weight: 900;
   margin-top: 16px;
   font-variant-numeric: tabular-nums;
+}
+
+.pause-countdown {
+  margin-top: 10px;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+#pause-seconds {
+  display: inline-block;
+  min-width: 1ch;
+  color: var(--text);
+  font-size: 1.3rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  animation: countdownPulse 1s ease infinite;
+}
+
+@keyframes countdownPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.16); opacity: 0.75; }
 }
 
 /* ========== RESULTS ========== */
