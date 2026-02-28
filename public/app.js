@@ -3,11 +3,15 @@ const socket = io();
 // State
 let state = {
   myId: null,
+  mySessionId: null,
   myName: null,
   roomCode: null,
   isHost: false,
   role: null, // 'explainer' | 'guesser' | 'observer'
-  roundTime: 60
+  roundTime: 60,
+  currentTurnId: 0,
+  myTeam: null,
+  prefersReducedMotion: false
 };
 
 const SWIPE_TRIGGER_PX = 80;
@@ -16,6 +20,7 @@ const SWIPE_EXIT_MS = 300;
 const SWIPE_ENTER_MS = 350;
 
 let pauseCountdownInterval = null;
+let stealCountdownInterval = null;
 const swipeState = {
   initialized: false,
   area: null,
@@ -28,9 +33,40 @@ const swipeState = {
   deltaX: 0
 };
 
+function getOrCreatePlayerSessionId() {
+  const key = 'alias-player-session-id';
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const generated = (crypto?.randomUUID?.() || `alias-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  localStorage.setItem(key, generated);
+  return generated;
+}
+
+function isGameActive() {
+  return document.getElementById('game')?.classList.contains('active');
+}
+
+function canVibrate() {
+  return !state.prefersReducedMotion && typeof navigator.vibrate === 'function';
+}
+
+function updateReducedMotionPreference() {
+  state.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.body.classList.toggle('reduced-motion', state.prefersReducedMotion);
+}
+
+updateReducedMotionPreference();
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+if (typeof motionQuery.addEventListener === 'function') {
+  motionQuery.addEventListener('change', updateReducedMotionPreference);
+} else if (typeof motionQuery.addListener === 'function') {
+  motionQuery.addListener(updateReducedMotionPreference);
+}
+
 // Reconnection support
 socket.on('connect', () => {
   state.myId = socket.id;
+  state.mySessionId = getOrCreatePlayerSessionId();
 
   // Try to rejoin if we have saved session
   const saved = sessionStorage.getItem('alias-session');
@@ -39,7 +75,7 @@ socket.on('connect', () => {
     if (roomCode && myName) {
       state.roomCode = roomCode;
       state.myName = myName;
-      socket.emit('join-room', { code: roomCode, playerName: myName });
+      socket.emit('join-room', { code: roomCode, playerName: myName, playerSessionId: state.mySessionId });
     }
   }
 });
@@ -63,7 +99,9 @@ document.getElementById('btn-join-submit').onclick = () => {
   if (!code || !name) return;
   state.myName = name;
   state.roomCode = code;
-  socket.emit('join-room', { code, playerName: name });
+  state.currentTurnId = 0;
+  if (!state.mySessionId) state.mySessionId = getOrCreatePlayerSessionId();
+  socket.emit('join-room', { code, playerName: name, playerSessionId: state.mySessionId });
   sessionStorage.setItem('alias-session', JSON.stringify({ roomCode: code, myName: name }));
 };
 
@@ -95,6 +133,7 @@ document.getElementById('btn-create-room').onclick = () => {
   if (!name) return;
   state.myName = name;
   state.isHost = true;
+  state.currentTurnId = 0;
 
   const categories = [...document.querySelectorAll('#categories-list .category-chip.selected')]
     .map(chip => chip.textContent);
@@ -109,15 +148,19 @@ document.getElementById('btn-create-room').onclick = () => {
 
 socket.on('room-created', ({ code }) => {
   state.roomCode = code;
+  state.currentTurnId = 0;
   document.getElementById('room-code-display').textContent = code;
   showScreen('lobby');
   // Host auto-joins as player
-  socket.emit('join-room', { code, playerName: state.myName });
+  if (!state.mySessionId) state.mySessionId = getOrCreatePlayerSessionId();
+  socket.emit('join-room', { code, playerName: state.myName, playerSessionId: state.mySessionId });
   sessionStorage.setItem('alias-session', JSON.stringify({ roomCode: code, myName: state.myName }));
 });
 
 socket.on('player-joined', ({ players, hostId }) => {
   state.isHost = hostId === state.myId;
+  const me = players.find(p => p.id === state.myId);
+  state.myTeam = me?.team ?? state.myTeam;
 
   // If we just joined and weren't on lobby yet, switch to lobby
   if (!document.getElementById('lobby').classList.contains('active') &&
@@ -144,6 +187,10 @@ function updatePlayerList(players, hostId) {
     tag.className = 'player-tag';
     const name = document.createElement('span');
     name.textContent = `${p.name}${p.id === state.myId ? ' (Вы)' : ''}`;
+    if (p.disconnected) {
+      tag.classList.add('disconnected');
+      name.textContent += ' (оффлайн)';
+    }
     tag.appendChild(name);
 
     if (p.id === hostId) {
@@ -207,13 +254,17 @@ document.getElementById('btn-start').onclick = () => {
 };
 
 // Game started — determine role
-socket.on('game-started', ({ team, explainerId, guesserId }) => {
+socket.on('game-started', ({ team, explainerId, guesserId, myRole, myTeam, turnId }) => {
+  if (Number.isFinite(turnId) && turnId < state.currentTurnId) return;
+  if (Number.isFinite(turnId)) state.currentTurnId = turnId;
+
   const myId = socket.id || state.myId;
   state.myId = myId;
-  console.log('game-started', { myId, explainerId, guesserId });
+  if (myTeam != null) state.myTeam = myTeam;
 
   showScreen('game');
   stopPauseCountdown();
+  stopStealCountdown();
   resetSwipeCard();
 
   // Hide all role views first
@@ -221,14 +272,20 @@ socket.on('game-started', ({ team, explainerId, guesserId }) => {
   document.getElementById('guesser-view').classList.add('hidden');
   document.getElementById('observer-view').classList.add('hidden');
   document.getElementById('turn-overlay').classList.add('hidden');
+  document.getElementById('steal-overlay').classList.add('hidden');
 
-  if (myId === explainerId) {
+  const resolvedRole = ['explainer', 'guesser', 'observer'].includes(myRole)
+    ? myRole
+    : (myId === explainerId ? 'explainer' : myId === guesserId ? 'guesser' : 'observer');
+
+  if (resolvedRole === 'explainer') {
     state.role = 'explainer';
     document.getElementById('explainer-view').classList.remove('hidden');
-  } else if (myId === guesserId) {
+  } else if (resolvedRole === 'guesser') {
     state.role = 'guesser';
     document.getElementById('guesser-view').classList.remove('hidden');
     initSwipeCard();
+    showSwipeTutorialOnce();
   } else {
     state.role = 'observer';
     document.getElementById('observer-view').classList.remove('hidden');
@@ -267,29 +324,64 @@ socket.on('tick', ({ secondsLeft }) => {
   if (secondsLeft <= 5) {
     timerProgress.classList.add('danger');
     timerContainer.classList.add('pulse');
-    navigator.vibrate?.(30);
+    if (canVibrate()) navigator.vibrate(30);
   } else if (secondsLeft <= 15) {
     timerProgress.classList.add('warning');
   }
 });
 
+socket.on('steal-window-started', ({ duration = 2, stealEndsAt = null, playingTeam = null, turnId }) => {
+  if (Number.isFinite(turnId) && turnId < state.currentTurnId) return;
+  if (Number.isFinite(turnId)) state.currentTurnId = turnId;
+
+  state.role = 'observer';
+  stopPauseCountdown();
+  const overlay = document.getElementById('steal-overlay');
+  const playingTeamEl = document.getElementById('steal-playing-team');
+  if (playingTeamEl && playingTeam != null) playingTeamEl.textContent = playingTeam;
+  overlay.classList.remove('hidden');
+
+  const stealBtn = document.getElementById('btn-steal-word');
+  const canSteal = state.myTeam && playingTeam != null && state.myTeam !== playingTeam;
+  if (stealBtn) {
+    stealBtn.classList.toggle('hidden', !canSteal);
+    stealBtn.disabled = !canSteal;
+  }
+
+  startStealCountdown(duration, stealEndsAt);
+});
+
+socket.on('steal-word-result', ({ team, scores }) => {
+  updateScores(scores);
+  showToast(`Команда ${team} перехватила слово (+1)`);
+});
+
 // Turn end
-socket.on('turn-end', ({ scores, pauseDuration = 5 }) => {
+socket.on('turn-end', ({ scores, pauseDuration = 5, pauseEndsAt = null, turnId }) => {
+  if (Number.isFinite(turnId) && turnId < state.currentTurnId) return;
+  if (Number.isFinite(turnId)) state.currentTurnId = turnId;
+
+  state.role = 'observer';
   updateScores(scores);
 
   const overlay = document.getElementById('turn-overlay');
+  document.getElementById('steal-overlay').classList.add('hidden');
+  stopStealCountdown();
   overlay.classList.remove('hidden');
   const overlayT1 = overlay.querySelector('.team-1-score');
   const overlayT2 = overlay.querySelector('.team-2-score');
   if (overlayT1) overlayT1.textContent = scores[1];
   if (overlayT2) overlayT2.textContent = scores[2];
-  startPauseCountdown(pauseDuration);
+  startPauseCountdown(pauseDuration, pauseEndsAt);
 });
 
 // Game over
 socket.on('game-over', ({ winner, scores }) => {
   stopPauseCountdown();
+  stopStealCountdown();
   document.getElementById('turn-overlay').classList.add('hidden');
+  document.getElementById('steal-overlay').classList.add('hidden');
+  state.role = null;
   showScreen('results');
   document.getElementById('winner-text').textContent = `Команда ${winner} победила!`;
   document.getElementById('final-score-1').textContent = scores[1];
@@ -309,23 +401,52 @@ socket.on('connect_error', () => {
 // Play again
 document.getElementById('btn-play-again').onclick = () => {
   stopPauseCountdown();
+  stopStealCountdown();
   document.getElementById('turn-overlay').classList.add('hidden');
+  document.getElementById('steal-overlay').classList.add('hidden');
   sessionStorage.removeItem('alias-session');
-  state = { myId: socket.id, myName: null, roomCode: null, isHost: false, role: null, roundTime: 60 };
+  state = {
+    myId: socket.id,
+    mySessionId: state.mySessionId || getOrCreatePlayerSessionId(),
+    myName: null,
+    roomCode: null,
+    isHost: false,
+    role: null,
+    roundTime: 60,
+    currentTurnId: 0,
+    myTeam: null,
+    prefersReducedMotion: state.prefersReducedMotion
+  };
   showScreen('home');
 };
 
 // ========== GAME ACTIONS ==========
 document.getElementById('btn-guess').onclick = () => {
-  if (state.role !== 'guesser') return;
-  socket.emit('guess');
-  navigator.vibrate?.(50);
+  submitGuesserAction('right');
 };
 document.getElementById('btn-skip').onclick = () => {
-  if (state.role !== 'guesser') return;
-  socket.emit('skip');
-  navigator.vibrate?.(30);
+  submitGuesserAction('left');
 };
+document.getElementById('btn-steal-word').onclick = () => {
+  socket.emit('steal-word');
+  const stealBtn = document.getElementById('btn-steal-word');
+  if (stealBtn) stealBtn.disabled = true;
+};
+
+window.addEventListener('keydown', (event) => {
+  if (!isGameActive() || state.role !== 'guesser') return;
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable) return;
+  if (event.repeat) return;
+
+  let direction = null;
+  if (event.key === 'ArrowRight' || event.key === 'Enter' || event.key === ' ') direction = 'right';
+  if (event.key === 'ArrowLeft' || event.key === 'Backspace') direction = 'left';
+  if (!direction) return;
+
+  event.preventDefault();
+  submitGuesserAction(direction);
+});
 
 // ========== COPY ROOM CODE ==========
 document.getElementById('btn-copy-code')?.addEventListener('click', () => {
@@ -334,6 +455,22 @@ document.getElementById('btn-copy-code')?.addEventListener('click', () => {
 });
 
 // ========== HELPERS ==========
+function showSwipeTutorialOnce() {
+  const key = 'alias-swipe-hint-seen';
+  if (localStorage.getItem(key) === '1') return;
+  showToast('Подсказка: свайп вправо = угадал, влево = пропуск');
+  localStorage.setItem(key, '1');
+}
+
+function submitGuesserAction(direction) {
+  if (state.role !== 'guesser') return false;
+
+  const eventName = direction === 'right' ? 'guess' : 'skip';
+  socket.emit(eventName);
+  if (canVibrate()) navigator.vibrate(direction === 'right' ? 50 : 30);
+  return true;
+}
+
 function stopPauseCountdown() {
   if (pauseCountdownInterval) {
     clearInterval(pauseCountdownInterval);
@@ -341,22 +478,74 @@ function stopPauseCountdown() {
   }
 }
 
-function startPauseCountdown(pauseDuration = 5) {
+function stopStealCountdown() {
+  if (stealCountdownInterval) {
+    clearInterval(stealCountdownInterval);
+    stealCountdownInterval = null;
+  }
+}
+
+function startPauseCountdown(pauseDuration = 5, pauseEndsAt = null) {
   stopPauseCountdown();
   const secondsEl = document.getElementById('pause-seconds');
   if (!secondsEl) return;
 
-  let secondsLeft = Number.isFinite(pauseDuration) ? pauseDuration : 5;
-  secondsEl.textContent = String(secondsLeft);
+  const fallbackSeconds = Number.isFinite(pauseDuration) ? pauseDuration : 5;
+  const hasServerEndTime = Number.isFinite(pauseEndsAt) && pauseEndsAt > 0;
 
+  if (hasServerEndTime) {
+    const update = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((pauseEndsAt - Date.now()) / 1000));
+      secondsEl.textContent = String(remainingSeconds);
+      if (remainingSeconds <= 0) stopPauseCountdown();
+    };
+    update();
+    pauseCountdownInterval = setInterval(update, 250);
+    return;
+  }
+
+  let secondsLeft = fallbackSeconds;
+  secondsEl.textContent = String(secondsLeft);
   pauseCountdownInterval = setInterval(() => {
     secondsLeft -= 1;
+    secondsEl.textContent = String(Math.max(0, secondsLeft));
+    if (secondsLeft <= 0) stopPauseCountdown();
+  }, 1000);
+}
+
+function startStealCountdown(duration = 2, stealEndsAt = null) {
+  stopStealCountdown();
+  const secondsEl = document.getElementById('steal-seconds');
+  if (!secondsEl) return;
+
+  const fallbackSeconds = Number.isFinite(duration) ? duration : 2;
+  const hasServerEndTime = Number.isFinite(stealEndsAt) && stealEndsAt > 0;
+
+  if (hasServerEndTime) {
+    const update = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((stealEndsAt - Date.now()) / 1000));
+      secondsEl.textContent = String(remainingSeconds);
+      if (remainingSeconds <= 0) {
+        stopStealCountdown();
+        const stealBtn = document.getElementById('btn-steal-word');
+        if (stealBtn) stealBtn.disabled = true;
+      }
+    };
+    update();
+    stealCountdownInterval = setInterval(update, 200);
+    return;
+  }
+
+  let secondsLeft = fallbackSeconds;
+  secondsEl.textContent = String(secondsLeft);
+  stealCountdownInterval = setInterval(() => {
+    secondsLeft -= 1;
+    secondsEl.textContent = String(Math.max(0, secondsLeft));
     if (secondsLeft <= 0) {
-      secondsEl.textContent = '0';
-      stopPauseCountdown();
-      return;
+      stopStealCountdown();
+      const stealBtn = document.getElementById('btn-steal-word');
+      if (stealBtn) stealBtn.disabled = true;
     }
-    secondsEl.textContent = String(secondsLeft);
   }, 1000);
 }
 
@@ -465,16 +654,18 @@ function snapSwipeBack() {
 
 function triggerSwipe(direction) {
   if (state.role !== 'guesser' || swipeState.isAnimating || !swipeState.card) return;
+  if (!submitGuesserAction(direction)) return;
+
+  const exitMs = state.prefersReducedMotion ? 0 : SWIPE_EXIT_MS;
+  const enterMs = state.prefersReducedMotion ? 0 : SWIPE_ENTER_MS;
+
+  if (state.prefersReducedMotion) {
+    resetSwipeCard();
+    return;
+  }
+
   swipeState.isAnimating = true;
   swipeState.isDragging = false;
-
-  if (direction === 'right') {
-    socket.emit('guess');
-    navigator.vibrate?.(50);
-  } else {
-    socket.emit('skip');
-    navigator.vibrate?.(30);
-  }
 
   swipeState.card.classList.remove('swiping-left', 'swiping-right', 'entering');
   swipeState.card.classList.add(direction === 'right' ? 'exit-right' : 'exit-left');
@@ -501,8 +692,8 @@ function triggerSwipe(direction) {
       swipeState.card.classList.remove('entering', 'swiping-left', 'swiping-right');
       swipeState.card.style.transition = '';
       swipeState.isAnimating = false;
-    }, SWIPE_ENTER_MS);
-  }, SWIPE_EXIT_MS);
+    }, enterMs);
+  }, exitMs);
 }
 
 function resetSwipeCard() {
@@ -524,6 +715,7 @@ function updateScores(scores) {
   document.querySelectorAll('.team-1-score').forEach(el => {
     if (el.textContent !== String(scores[1])) {
       el.textContent = scores[1];
+      if (state.prefersReducedMotion) return;
       el.classList.remove('score-bump');
       void el.offsetWidth;
       el.classList.add('score-bump');
@@ -532,6 +724,7 @@ function updateScores(scores) {
   document.querySelectorAll('.team-2-score').forEach(el => {
     if (el.textContent !== String(scores[2])) {
       el.textContent = scores[2];
+      if (state.prefersReducedMotion) return;
       el.classList.remove('score-bump');
       void el.offsetWidth;
       el.classList.add('score-bump');

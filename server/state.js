@@ -1,8 +1,10 @@
 const rooms = new Map();
 
 function ensureHost(room) {
-  if (!room.players.some(p => p.id === room.hostId)) {
-    room.hostId = room.players[0]?.id ?? null;
+  const currentHost = room.players.find(p => p.id === room.hostId && !p.disconnected);
+  if (!currentHost) {
+    const onlinePlayer = room.players.find(p => !p.disconnected);
+    room.hostId = onlinePlayer?.id ?? null;
   }
 }
 
@@ -39,7 +41,9 @@ export function createRoom({ hostId, categories, targetScore, roundTime }) {
     scores: { 1: 0, 2: 0 },
     phase: 'lobby',
     currentTurn: null,
-    turnIndex: 0
+    turnIndex: 0,
+    pauseEndsAt: null,
+    stealEndsAt: null
   });
   return code;
 }
@@ -50,12 +54,12 @@ export function getRoomByCode(code) {
 
 export const getRoom = getRoomByCode;
 
-export function addPlayer(code, { id, name }) {
+export function addPlayer(code, { id, name, sessionId = null }) {
   const room = rooms.get(code);
   if (room.players.length >= 4) {
     throw new Error('Room is full');
   }
-  room.players.push({ id, name, team: null });
+  room.players.push({ id, name, sessionId, team: null, disconnected: false });
   ensureHost(room);
 }
 

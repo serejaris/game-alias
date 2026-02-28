@@ -37,6 +37,13 @@ describe('state', () => {
       expect(room.players[0].name).toBe('Alice');
     });
 
+    it('stores stable player session id when provided', () => {
+      addPlayer(roomId, { id: 'p1', name: 'Alice', sessionId: 'sess-1' });
+      const room = getRoomByCode(roomId);
+      expect(room.players[0].sessionId).toBe('sess-1');
+      expect(room.players[0].disconnected).toBe(false);
+    });
+
     it('rejects 5th player', () => {
       addPlayer(roomId, { id: 'p1', name: 'A' });
       addPlayer(roomId, { id: 'p2', name: 'B' });
