@@ -28,6 +28,41 @@ export function registerHandlers(io, socket) {
   socket.on('join-room', ({ code, playerName }) => {
     const room = getRoomByCode(code);
     if (!room) return socket.emit('error', { message: 'Room not found' });
+
+    // Check if this is a reconnection (same name already exists)
+    const existingPlayer = room.players.find(p => p.name === playerName);
+    if (existingPlayer) {
+      const oldId = existingPlayer.id;
+      existingPlayer.id = socket.id;
+      playerRooms.set(socket.id, code);
+      socket.join(code);
+
+      // Update host id if needed
+      if (room.hostId === oldId) {
+        room.hostId = socket.id;
+      }
+
+      // Update current turn references if needed
+      if (room.currentTurn) {
+        if (room.currentTurn.explainerId === oldId) room.currentTurn.explainerId = socket.id;
+        if (room.currentTurn.guesserId === oldId) room.currentTurn.guesserId = socket.id;
+      }
+
+      const updated = getRoomByCode(code);
+      io.to(code).emit('player-joined', { players: updated.players });
+
+      // If game is in progress, resend game state
+      if (room.phase === 'playing' && room.currentTurn) {
+        socket.emit('game-started', room.currentTurn);
+        // If this player is the explainer, send a new word
+        if (room.currentTurn.explainerId === socket.id) {
+          const pool = roomWordPools.get(code);
+          if (pool) socket.emit('new-word', { word: pool.nextWord() });
+        }
+      }
+      return;
+    }
+
     try {
       addPlayer(code, { id: socket.id, name: playerName });
     } catch (e) {

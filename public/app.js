@@ -10,9 +10,20 @@ let state = {
   roundTime: 60
 };
 
-// Wait for connect to get socket.id
+// Reconnection support
 socket.on('connect', () => {
   state.myId = socket.id;
+
+  // Try to rejoin if we have saved session
+  const saved = sessionStorage.getItem('alias-session');
+  if (saved) {
+    const { roomCode, myName } = JSON.parse(saved);
+    if (roomCode && myName) {
+      state.roomCode = roomCode;
+      state.myName = myName;
+      socket.emit('join-room', { code: roomCode, playerName: myName });
+    }
+  }
 });
 
 // ========== SCREEN MANAGEMENT ==========
@@ -35,6 +46,7 @@ document.getElementById('btn-join-submit').onclick = () => {
   state.myName = name;
   state.roomCode = code;
   socket.emit('join-room', { code, playerName: name });
+  sessionStorage.setItem('alias-session', JSON.stringify({ roomCode: code, myName: name }));
 };
 
 // ========== CREATE SCREEN ==========
@@ -83,6 +95,7 @@ socket.on('room-created', ({ code }) => {
   showScreen('lobby');
   // Host auto-joins as player
   socket.emit('join-room', { code, playerName: state.myName });
+  sessionStorage.setItem('alias-session', JSON.stringify({ roomCode: code, myName: state.myName }));
 });
 
 socket.on('player-joined', ({ players }) => {
@@ -216,8 +229,14 @@ socket.on('error', ({ message }) => {
   showToast(message);
 });
 
+// Connection error
+socket.on('connect_error', () => {
+  showToast('Connection lost. Reconnecting...');
+});
+
 // Play again
 document.getElementById('btn-play-again').onclick = () => {
+  sessionStorage.removeItem('alias-session');
   state = { myId: socket.id, myName: null, roomCode: null, isHost: false, role: null, roundTime: 60 };
   showScreen('home');
 };
